@@ -37,18 +37,20 @@ def clean_text(text):
     return new
 
 
-
 def trainClassifiers(dataset):
-
-
-
 
     dataset=dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
     dataset = dataset[dataset['name_t'].notnull()]
-    dataset=dataset.drop(dataset.index[dataset.description_t.str.contains(r'[0-9]', na=False)])
-    dataset = dataset[dataset['description_t'].notnull()]
 
-    #This because when adding the description class TVstation is cosing some problem (none of the testing data is bsing classified as TVstaion)
+    #replace null descriptions with ' '  
+    dataset["description_t"].fillna("   ", inplace = True)
+
+    #add a sentence of the disc to the name column
+    dataset['description'] = dataset['description_t'].apply(lambda x: x.split('.')[0])  
+    dataset['name_t'] = dataset['name_t'] + ' ' +  dataset['description']
+
+    dataset['description_t']=dataset['description_t'].apply(clean_text)
+    #This because when adding the description class TVstation is cosing some problem (none of the testing data is being classified as TVstaiton)
 
     dataset = dataset.drop(dataset[dataset['schemaorg_class']=='TelevisionStation'].index)
     #dataset['name_t']=dataset['name_t'].apply(clean_text)
@@ -85,12 +87,13 @@ def trainClassifiers(dataset):
                                       [int(.7*len(dataset))])
 
 
-    #adding a sentence from the description to the entity name
-    data_train['description'] = data_train['description_t'].apply(lambda x: x.split('.')[0])
-    data_train['name_t'] = data_train['name_t'] + ' ' +  data_train['description']
-    
-    data_test['description'] = data_test['description_t'].apply(lambda x: x.split('.')[0])
-    data_test['name_t'] = data_test['name_t'] + ' ' +  data_test['description']
+    #data_train['description'] = data_train['description_t'].apply(lambda x: x.split('.')[0])
+    #data_train['name_t'] = data_train['name_t'] + ' ' +  data_train['description']
+
+
+    #data_test['description'] = data_test['description_t'].apply(lambda x: x.split('.')[0])
+    #data_test['name_t'] = data_test['name_t'] + ' ' +  data_test['description']
+
 
 
     train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
@@ -181,7 +184,6 @@ def transformer_cv(dataset):
     return predictor, label_dict
     
     
-#This method applys the instances ( a data frame) of the parent class to the trained classifier and return the results
 def getMatchingResults(parent_class_instances, model, dictionary):
     # here we are applaying instances in the target KG to the trained model
     predected_class_list = []
@@ -212,7 +214,7 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-#Model,label_dict=trainClassifiers(dataset)
+Model,label_dict=trainClassifiers(dataset)
 
 
 ##############################################
@@ -251,4 +253,4 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-#Model,label_dict=trainClassifiers(dataset)
+Model,label_dict=trainClassifiers(dataset)
