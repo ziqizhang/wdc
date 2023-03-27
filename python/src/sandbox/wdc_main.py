@@ -4,16 +4,10 @@ import nltk
 nltk.download('punkt')
 nltk.download('stopwords')
 from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import TfidfVectorizer,CountVectorizer
 from bs4 import BeautifulSoup
 import re
 
-from collections import Counter
-
-import tensorflow_hub as hub
 import ktrain
-from ktrain import text
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
