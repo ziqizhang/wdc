@@ -16,6 +16,10 @@ from ktrain import text
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score
 
+from domain_name_extractor import extract_domain_name
+
+import wordsegment as ws
+ws.load()
 
 def clean_text(text):
     """
@@ -42,29 +46,26 @@ def trainClassifiers(dataset):
     dataset=dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
     dataset = dataset[dataset['name_t'].notnull()]
 
-    #replace null descriptions with ' '  
-    dataset["description_t"].fillna("   ", inplace = True)
+    dataset['description'] = dataset['description'].apply(clean_text)
 
-    #add a sentence of the disc to the name column
-    dataset['description'] = dataset['description_t'].apply(lambda x: x.split('.')[0])  
-    dataset['name_t'] = dataset['name_t'] + ' ' +  dataset['description']
 
-    dataset['description_t']=dataset['description_t'].apply(clean_text)
-    #This because when adding the description class TVstation is cosing some problem (none of the testing data is being classified as TVstaiton)
 
-    dataset = dataset.drop(dataset[dataset['schemaorg_class']=='TelevisionStation'].index)
-    #dataset['name_t']=dataset['name_t'].apply(clean_text)
+    #parse the domain name
+    dataset['page_domain']=dataset['page_domain'].apply(extract_domain_name)
 
-    #removes classes with few instances because BERT is not able to learn from those
-    minimum_instances=2
-    try:
-          stat=dataset.groupby('schemaorg_class').agg({'name_t':'count'})
-          MyList=[]
-          MyList=stat[stat['name_t'] < minimum_instances].index.values
-          dataset=dataset[~dataset.schemaorg_class.isin(MyList)]
-    except KeyError:
-          print('')
-  
+    # add the name + domain column
+    dataset['domain1']= dataset['name_t'] + ' ' + dataset['page_domain']
+
+    # add the name + 1 scentence _ domain column
+    dataset['domain2']= dataset['description'] + ' ' + dataset['page_domain']
+
+    # this is the column to be used to train the model
+    # 'name_t' for name only
+    # 'description' for name + 1 scenternce of description
+    # 'domain1' for name and page domain (parsed)
+    # 'domain2' for name  1 scenternce of description and page domain (parsed)
+
+    Training_Column = 'domain1'
    
 
     possible_labels = dataset.schemaorg_class.unique()
@@ -73,7 +74,7 @@ def trainClassifiers(dataset):
     for index, possible_label in enumerate(possible_labels):
         label_dict[possible_label] = index
 
-    dataset['label'] = dataset.schemaorg_class.replace(label_dict)
+    #dataset['label'] = dataset.schemaorg_class.replace(label_dict)
 
 
     X_train, X_val, y_train, y_val = train_test_split(dataset.index.values,
@@ -87,17 +88,10 @@ def trainClassifiers(dataset):
                                       [int(.7*len(dataset))])
 
 
-    #data_train['description'] = data_train['description_t'].apply(lambda x: x.split('.')[0])
-    #data_train['name_t'] = data_train['name_t'] + ' ' +  data_train['description']
-
-
-    #data_test['description'] = data_test['description_t'].apply(lambda x: x.split('.')[0])
-    #data_test['name_t'] = data_test['name_t'] + ' ' +  data_test['description']
-
 
 
     train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
-                                                                        text_column = 'name_t',
+                                                                        text_column =Training_Column,
                                                                         label_columns = 'schemaorg_class',
                                                                         val_df = data_test,
                                                                         maxlen = 15,
@@ -205,7 +199,7 @@ def getMatchingResults(parent_class_instances, model, dictionary):
 #
 ##############################################
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data/places_with_other_class.csv')
+dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place.csv')
 
 
 original=len(dataset)
@@ -215,6 +209,7 @@ print('Total number of duplicate items is', original-new)
 
 
 Model,label_dict=trainClassifiers(dataset)
+
 
 
 ##############################################
@@ -223,7 +218,7 @@ Model,label_dict=trainClassifiers(dataset)
 #
 ##############################################
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data/localBusiness_with_other_class.csv')#localBusiness_
+dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness.csv')
 
 
 original=len(dataset)
@@ -233,8 +228,6 @@ print('Total number of duplicate items is', original-new)
 
 
 Model,label_dict=trainClassifiers(dataset)
-
-
 
 
 ##############################################
@@ -244,7 +237,7 @@ Model,label_dict=trainClassifiers(dataset)
 ##############################################
 
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data/CreativeWork_with_other_class.csv')#localBusiness_
+dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork.csv')
 
 
 original=len(dataset)
