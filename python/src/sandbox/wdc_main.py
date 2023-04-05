@@ -17,7 +17,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score
 
 from domain_name_extractor import extract_domain_name
-
+from datetime import datetime
 import wordsegment as ws
 ws.load()
 
@@ -41,23 +41,107 @@ def clean_text(text):
     return new
 
 
-def trainClassifiers(dataset):
+def trainClassifiers(dataset, parent_class):
+    dataset = dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
+    dataset = dataset[dataset['name_t'].notnull()]
 
-    dataset=dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
+    # dataset['description'] = dataset['description'].apply(clean_text)
+
+    # parse the domain name
+    domains = pd.unique(dataset['page_domain'])
+    domains_dict = {}
+    for d in domains:
+        v = extract_domain_name(d)
+        domains_dict[d] = v
+
+    dataset.replace({"page_domain": domains_dict})
+
+    # add the name + domain column
+    dataset['domain1'] = dataset['name_t'] + ' ' + dataset['page_domain']
+
+    # add the name + 1 scentence _ domain column
+    dataset['domain2'] = dataset['description'] + ' ' + dataset['page_domain']
+
+    # this is the column to be used to train the model
+    # 'name_t' for name only
+    # 'description' for name + 1 scenternce of description
+    # 'domain1' for name and page domain (parsed)
+    # 'domain2' for name  1 scenternce of description and page domain (parsed)
+
+    Training_Column = 'domain2'
+
+    possible_labels = dataset.schemaorg_class.unique()
+
+    label_dict = {}
+    for index, possible_label in enumerate(possible_labels):
+        label_dict[possible_label] = index
+
+    # dataset['label'] = dataset.schemaorg_class.replace(label_dict)
+
+    X_train, X_val, y_train, y_val = train_test_split(dataset.index.values,
+                                                      dataset.label.values,
+                                                      test_size=0.15,
+                                                      random_state=42,
+                                                      stratify=dataset.label.values)
+
+    data_train, data_test = np.split(dataset.sample(frac=1, random_state=42),
+                                     [int(.7 * len(dataset))])
+
+    train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
+                                                        text_column=Training_Column,
+                                                        label_columns='schemaorg_class',
+                                                        val_df=data_test,
+                                                        maxlen=64,
+                                                        preprocess_mode='distilbert')
+
+    model = text.text_classifier(name='distilbert',
+                                 train_data=train_data,
+                                 preproc=preproc)
+
+    learner = ktrain.get_learner(model=model, train_data=train_data,
+                                 val_data=test_data,
+                                 batch_size=16)
+
+    # Essentially fit is a very basic training loop, whereas fit one cycle uses the one cycle policy callback
+
+    learner.fit_onecycle(lr=5e-5, epochs=3)  # 5e-5
+    # learner.fit(lr = 0.001 ,n_cycles=10)
+
+    learner.validate(class_names=preproc.get_classes())
+
+    predictor = ktrain.get_predictor(learner.model, preproc)
+
+    predected_class_list=[]
+    Instance_Names = parent_class[Training_Column]
+    predictions = predictor.predict(list(Instance_Names))
+    p = np.argmax(predictions, axis=-1)
+    for name in predictions:
+        predected_class_list.append(name)
+
+    parent_class['Predected_Class'] = predected_class_list
+
+    filename = Training_Column + '_' + datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p") + '.csv'
+
+    parent_class.to_csv(filename)
+
+    return predictor, label_dict
+
+
+# this method performs the 5-fold training using the same BERT model
+def transformer_cv(dataset):
+    dataset = dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
     dataset = dataset[dataset['name_t'].notnull()]
 
     dataset['description'] = dataset['description'].apply(clean_text)
 
-
-
-    #parse the domain name
-    dataset['page_domain']=dataset['page_domain'].apply(extract_domain_name)
+    # parse the domain name
+    dataset['page_domain'] = dataset['page_domain'].apply(extract_domain_name)
 
     # add the name + domain column
-    dataset['domain1']= dataset['name_t'] + ' ' + dataset['page_domain']
+    dataset['domain1'] = dataset['name_t'] + ' ' + dataset['page_domain']
 
     # add the name + 1 scentence _ domain column
-    dataset['domain2']= dataset['description'] + ' ' + dataset['page_domain']
+    dataset['domain2'] = dataset['description'] + ' ' + dataset['page_domain']
 
     # this is the column to be used to train the model
     # 'name_t' for name only
@@ -66,7 +150,6 @@ def trainClassifiers(dataset):
     # 'domain2' for name  1 scenternce of description and page domain (parsed)
 
     Training_Column = 'domain1'
-   
 
     possible_labels = dataset.schemaorg_class.unique()
 
@@ -74,123 +157,41 @@ def trainClassifiers(dataset):
     for index, possible_label in enumerate(possible_labels):
         label_dict[possible_label] = index
 
-    #dataset['label'] = dataset.schemaorg_class.replace(label_dict)
+    # dataset['label'] = dataset.schemaorg_class.replace(label_dict)
 
-
-    X_train, X_val, y_train, y_val = train_test_split(dataset.index.values,
-                                                      dataset.label.values,
-                                                      test_size=0.15,
-                                                      random_state=42,
-                                                      stratify=dataset.label.values)
-
-    
-    data_train, data_test = np.split(dataset.sample(frac=1, random_state=42),
-                                      [int(.7*len(dataset))])
-
-
-
-
-    train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
-                                                                        text_column =Training_Column,
-                                                                        label_columns = 'schemaorg_class',
-                                                                        val_df = data_test,
-                                                                        maxlen = 15,
-                                                                        preprocess_mode = 'distilbert')
-
-    model = text.text_classifier(name = 'distilbert',
-                                  train_data=train_data,
-                                  preproc = preproc)
-
-    learner = ktrain.get_learner(model=model, train_data=train_data,
-                                  val_data = test_data,
-                                  batch_size = 16)
-
-    #Essentially fit is a very basic training loop, whereas fit one cycle uses the one cycle policy callback
-
-    learner.fit_onecycle(lr=5e-5 , epochs = 3)#5e-5
-    #learner.fit(lr = 0.001 ,n_cycles=10)
-    
-    learner.validate(class_names=preproc.get_classes())
-
-    predictor = ktrain.get_predictor(learner.model, preproc)
-    #predictor.save('/content/drive/My Drive/bert')
-    #y_pred=model.predict(X_test)
-    
-    #print(classification_report(y_test.argmax(axis=-1), y_pred.argmax(axis=-1)))
-    #print(classification_report(y_test.argmax(axis=-1), y_pred.argmax(axis=-1),target_names=possible_labels))
-
-    #plot_classification_report(classificationReport)
-      #= classification_report(y_test, y_pred, )
-
-    #R1.to_csv('report.csv')
-    return predictor, label_dict
-
-
-#this method performs the 5-fold training using the same BERT model
-def transformer_cv(dataset):
-
-    possible_labels = dataset.schemaorg_class.unique()
-
-    label_dict = {}
-    for index, possible_label in enumerate(possible_labels):
-            label_dict[possible_label] = index
-
-    dataset['label'] = dataset.schemaorg_class.replace(label_dict)
-
-
-    x_train, x_val, y_train, y_val = train_test_split(dataset.index.values,
-                                                          dataset.label.values,
-                                                          test_size=0.15,
-                                                          random_state=42,
-                                                          stratify=dataset.label.values) 
-    
-                                                            
     # CV with transformers
     N_FOLDS = 5
     EPOCHS = 3
     LR = 5e-5
-    MODEL_NAME='distilbert-base-uncased'#'bert'
+    MODEL_NAME = 'distilbert-base-uncased'  # 'bert'
 
-    predictions,accs=[],[]
-    data = dataset[['name_t', 'schemaorg_class']]
-    Folds=StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
-    for train_index, val_index in Folds.split(data,data['schemaorg_class']):
-        preproc  = text.Transformer(MODEL_NAME, maxlen=10)
-        train,val=dataset.iloc[train_index],dataset.iloc[val_index]
-        x_train=train.name_t.values
-        x_val=val.name_t.values
+    predictions, accs = [], []
+    data = dataset[[Training_Column, 'schemaorg_class']]
+    Folds = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
+    for train_index, val_index in Folds.split(data, data['schemaorg_class']):
+        preproc = text.Transformer(MODEL_NAME, maxlen=10)
+        train, val = dataset.iloc[train_index], dataset.iloc[val_index]
+        x_train = train.name_t.values
+        x_val = val.name_t.values
 
-        y_train=train.schemaorg_class.values
-        y_val=val.schemaorg_class.values
+        y_train = train.schemaorg_class.values
+        y_val = val.schemaorg_class.values
 
         trn = preproc.preprocess_train(x_train, y_train)
         model = preproc.get_classifier()
         learner = ktrain.get_learner(model, train_data=trn, batch_size=120)
         learner.fit_onecycle(LR, EPOCHS)
         predictor = ktrain.get_predictor(learner.model, preproc)
-        pred=predictor.predict(x_val)
-        acc=accuracy_score(y_val,pred)
-        print('acc',acc)
+        pred = predictor.predict(x_val)
+        acc = accuracy_score(y_val, pred)
+        print('acc', acc)
         accs.append(acc)
 
-    y_pred=model.predict(x_val)
-    print(classification_report(y_val.argmax(axis=-1), y_pred.argmax(axis=-1),target_names=possible_labels))
+    learner.validate(class_names=preproc.get_classes())
+
+    # predictor = ktrain.get_predictor(learner.model, preproc)
     return predictor, label_dict
-    
-    
-def getMatchingResults(parent_class_instances, model, dictionary):
-    # here we are applaying instances in the target KG to the trained model
-    predected_class_list = []
 
-    Instance_Names=parent_class_instances['name_t']
-    predictions = model.predict(list(Instance_Names))
-    p=np.argmax(predictions, axis=-1)
-    for name in predictions:
-        predected_class_list.append(name)
-
-    parent_class_instances['Predected_Class']=predected_class_list
-
-    return parent_class_instances
 
 
 ##############################################
@@ -200,7 +201,7 @@ def getMatchingResults(parent_class_instances, model, dictionary):
 ##############################################
 
 dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place.csv')
-
+parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place_parent.csv')
 
 original=len(dataset)
 dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
@@ -208,7 +209,7 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset)
+Model,label_dict=trainClassifiers(dataset,parent)
 
 
 
@@ -219,7 +220,7 @@ Model,label_dict=trainClassifiers(dataset)
 ##############################################
 
 dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness.csv')
-
+parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness_parent.csv')
 
 original=len(dataset)
 dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
@@ -227,7 +228,7 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset)
+Model,label_dict=trainClassifiers(dataset,parent)
 
 
 ##############################################
@@ -238,6 +239,7 @@ Model,label_dict=trainClassifiers(dataset)
 
 
 dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork.csv')
+parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork_parent.csv')
 
 
 original=len(dataset)
@@ -246,4 +248,4 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset)
+Model,label_dict=trainClassifiers(dataset,parent)
