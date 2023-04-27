@@ -132,9 +132,10 @@ def transformer_cv(dataset):
     dataset = dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
     dataset = dataset[dataset['name_t'].notnull()]
 
-    dataset['description'] = dataset['description'].apply(clean_text)
+    # dataset['description'] = dataset['description'].apply(clean_text)
 
     # parse the domain name
+
     dataset['page_domain'] = dataset['page_domain'].apply(extract_domain_name)
 
     # add the name + domain column
@@ -149,7 +150,7 @@ def transformer_cv(dataset):
     # 'domain1' for name and page domain (parsed)
     # 'domain2' for name  1 scenternce of description and page domain (parsed)
 
-    Training_Column = 'domain1'
+    Training_Column = 'description'
 
     possible_labels = dataset.schemaorg_class.unique()
 
@@ -168,29 +169,60 @@ def transformer_cv(dataset):
     predictions, accs = [], []
     data = dataset[[Training_Column, 'schemaorg_class']]
     Folds = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
+
+    fold = 0
     for train_index, val_index in Folds.split(data, data['schemaorg_class']):
+        fold = fold + 1
         preproc = text.Transformer(MODEL_NAME, maxlen=10)
-        train, val = dataset.iloc[train_index], dataset.iloc[val_index]
-        x_train = train.name_t.values
-        x_val = val.name_t.values
+        data_train, data_test = dataset.iloc[train_index], dataset.iloc[val_index]
+        train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
+                                                            text_column=Training_Column,
+                                                            label_columns='schemaorg_class',
+                                                            val_df=data_test,
+                                                            maxlen=64,
+                                                            preprocess_mode='distilbert')
 
-        y_train = train.schemaorg_class.values
-        y_val = val.schemaorg_class.values
+        model = text.text_classifier(name='distilbert',
+                                     train_data=train_data,
+                                     preproc=preproc)
 
-        trn = preproc.preprocess_train(x_train, y_train)
-        model = preproc.get_classifier()
-        learner = ktrain.get_learner(model, train_data=trn, batch_size=120)
+        learner = ktrain.get_learner(model=model, train_data=train_data,
+                                     val_data=test_data,
+                                     batch_size=16)
+
         learner.fit_onecycle(LR, EPOCHS)
+
+        # learner.validate(class_names=preproc.get_classes())
+
+        x_val = data_test.name_t.values
+        y_val = data_test.schemaorg_class.values
+
         predictor = ktrain.get_predictor(learner.model, preproc)
         pred = predictor.predict(x_val)
-        acc = accuracy_score(y_val, pred)
-        print('acc', acc)
-        accs.append(acc)
+        report = classification_report(y_val, pred, target_names=label_dict, output_dict=True)
 
-    learner.validate(class_names=preproc.get_classes())
+        if fold == 1:
+            df1 = pd.DataFrame(report).transpose()
+        elif fold == 2:
+            df2 = pd.DataFrame(report).transpose()
+        elif fold == 3:
+            df3 = pd.DataFrame(report).transpose()
+        elif fold == 4:
+            df4 = pd.DataFrame(report).transpose()
+        elif fold == 5:
+            df5 = pd.DataFrame(report).transpose()
 
-    # predictor = ktrain.get_predictor(learner.model, preproc)
-    return predictor, label_dict
+    ## list of data frames
+    dflist = [df1, df2, df3, df4, df5]
+
+    # concat the dflist along axis 0 to put the data frames on top of each other
+    df_concat = pd.concat(dflist, axis=0)
+
+    # group by and calculating mean on index
+    data_mean = df_concat.groupby(level=-0).mean()
+    print (data_mean)
+
+
 
 
 
@@ -209,8 +241,9 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset,parent)
 
+#Model,label_dict=trainClassifiers(dataset,parent)
+transformer_cv(dataset)
 
 
 ##############################################
@@ -228,7 +261,8 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset,parent)
+#Model,label_dict=trainClassifiers(dataset,parent)
+transformer_cv(dataset)
 
 
 ##############################################
@@ -248,4 +282,5 @@ new=len(dataset)
 print('Total number of duplicate items is', original-new)
 
 
-Model,label_dict=trainClassifiers(dataset,parent)
+#Model,label_dict=trainClassifiers(dataset,parent)
+transformer_cv(dataset)
