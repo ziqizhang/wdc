@@ -128,53 +128,32 @@ def trainClassifiers(dataset, parent_class):
 
 
 # this method performs the 5-fold training using the same BERT model
-def transformer_cv(dataset):
-    dataset = dataset.drop(dataset.index[dataset.name_t.str.contains(r'[0-9]', na=False)])
-    dataset = dataset[dataset['name_t'].notnull()]
-
-    # dataset['description'] = dataset['description'].apply(clean_text)
-
-    # parse the domain name
-
-    dataset['page_domain'] = dataset['page_domain'].apply(extract_domain_name)
-
-    # add the name + domain column
-    dataset['domain1'] = dataset['name_t'] + ' ' + dataset['page_domain']
-
-    # add the name + 1 scentence _ domain column
-    dataset['domain2'] = dataset['description'] + ' ' + dataset['page_domain']
+def transformer_cv(datasetFolder):
 
     # this is the column to be used to train the model
     # 'name_t' for name only
     # 'description' for name + 1 scenternce of description
-    # 'domain1' for name and page domain (parsed)
-    # 'domain2' for name  1 scenternce of description and page domain (parsed)
 
-    Training_Column = 'description'
+    Training_Column = 'name_t'
 
-    possible_labels = dataset.schemaorg_class.unique()
 
-    label_dict = {}
-    for index, possible_label in enumerate(possible_labels):
-        label_dict[possible_label] = index
-
-    # dataset['label'] = dataset.schemaorg_class.replace(label_dict)
 
     # CV with transformers
-    N_FOLDS = 5
     EPOCHS = 3
     LR = 5e-5
-    MODEL_NAME = 'distilbert-base-uncased'  # 'bert'
 
-    predictions, accs = [], []
-    data = dataset[[Training_Column, 'schemaorg_class']]
-    Folds = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
 
-    fold = 0
-    for train_index, val_index in Folds.split(data, data['schemaorg_class']):
-        fold = fold + 1
-        preproc = text.Transformer(MODEL_NAME, maxlen=10)
-        data_train, data_test = dataset.iloc[train_index], dataset.iloc[val_index]
+    folder = 0
+    while folder < 5:
+        data_train= pd.read_csv(datasetFolder+str(folder)+'/'+'train.csv')
+        data_test= pd.read_csv(datasetFolder+str(folder)+'/'+'test.csv')
+
+        possible_labels = data_train.schemaorg_class.unique()
+
+        label_dict = {}
+        for index, possible_label in enumerate(possible_labels):
+            label_dict[possible_label] = index
+
         train_data, test_data, preproc = text.texts_from_df(train_df=data_train,
                                                             text_column=Training_Column,
                                                             label_columns='schemaorg_class',
@@ -201,28 +180,28 @@ def transformer_cv(dataset):
         pred = predictor.predict(x_val)
         report = classification_report(y_val, pred, target_names=label_dict, output_dict=True)
 
-        if fold == 1:
+        if folder == 0:
             df1 = pd.DataFrame(report).transpose()
-        elif fold == 2:
+        elif folder == 1:
             df2 = pd.DataFrame(report).transpose()
-        elif fold == 3:
+        elif folder == 2:
             df3 = pd.DataFrame(report).transpose()
-        elif fold == 4:
+        elif folder == 3:
             df4 = pd.DataFrame(report).transpose()
-        elif fold == 5:
+        elif folder == 4:
             df5 = pd.DataFrame(report).transpose()
 
-    ## list of data frames
-    dflist = [df1, df2, df3, df4, df5]
+        ## list of data frames
+        dflist = [df1, df2, df3, df4, df5]
 
-    # concat the dflist along axis 0 to put the data frames on top of each other
-    df_concat = pd.concat(dflist, axis=0)
+        # concat the dflist along axis 0 to put the data frames on top of each other
+        df_concat = pd.concat(dflist, axis=0)
 
-    # group by and calculating mean on index
-    data_mean = df_concat.groupby(level=-0).mean()
-    print (data_mean)
+        # group by and calculating mean on index
+        data_mean = df_concat.groupby(level=-0).mean()
 
 
+        folder = folder+1
 
 
 
@@ -232,17 +211,19 @@ def transformer_cv(dataset):
 #
 ##############################################
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place.csv')
-parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place_parent.csv')
+#dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place.csv')
+#parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/Place_parent.csv')
 
-original=len(dataset)
-dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
-new=len(dataset)
-print('Total number of duplicate items is', original-new)
+#original=len(dataset)
+#dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
+#new=len(dataset)
+#print('Total number of duplicate items is', original-new)
 
 
 
 #Model,label_dict=trainClassifiers(dataset,parent)
+
+dataset='/data/lip18oaf/wdc_data_v4/Place/'
 transformer_cv(dataset)
 
 
@@ -252,17 +233,20 @@ transformer_cv(dataset)
 #
 ##############################################
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness.csv')
-parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness_parent.csv')
+#dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness.csv')
+#parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/LocalBusiness_parent.csv')
 
-original=len(dataset)
-dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
-new=len(dataset)
-print('Total number of duplicate items is', original-new)
+#original=len(dataset)
+#dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
+#new=len(dataset)
+#print('Total number of duplicate items is', original-new)
 
 
 #Model,label_dict=trainClassifiers(dataset,parent)
-transformer_cv(dataset)
+
+
+dataset='/data/lip18oaf/wdc_data_v4/LocalBusiness/'
+#transformer_cv(dataset)
 
 
 ##############################################
@@ -272,15 +256,17 @@ transformer_cv(dataset)
 ##############################################
 
 
-dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork.csv')
-parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork_parent.csv')
+#dataset=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork.csv')
+#parent=pd.read_csv('/data/lip18oaf/wdc_data_v4/CreativeWork_parent.csv')
 
 
-original=len(dataset)
-dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
-new=len(dataset)
-print('Total number of duplicate items is', original-new)
+#original=len(dataset)
+#dataset.drop_duplicates(subset=['schemaorg_class','name_t','page_domain'], keep='first', inplace=True, ignore_index=True)
+#new=len(dataset)
+#print('Total number of duplicate items is', original-new)
 
 
 #Model,label_dict=trainClassifiers(dataset,parent)
-transformer_cv(dataset)
+
+dataset='/data/lip18oaf/wdc_data_v4/CreativeWork/'
+#transformer_cv(dataset)
