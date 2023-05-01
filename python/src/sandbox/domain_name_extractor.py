@@ -28,6 +28,22 @@ def extract_domain_name(str):
         print("Cannot parse {}".format(str))
         return ""
 
+def extract_domain_name_nosegment(str):
+    try:
+        if(len(str))==0 or str is np.nan:
+            return ""
+        str="http://"+str
+        obj=urlparse(str)
+        hostname=obj.hostname
+        words=set(hostname.split("."))
+        words=words.difference(stopwords)
+        words=".".join(words)
+        return words
+
+    except:
+        print("Cannot parse {}".format(str))
+        return ""
+
 if __name__ == "__main__":
     col_domain=6
     in_file="/home/zz/Data/wdc_data_index/wdctable_202012_index_top100_export_forML/LocalBusiness.csv"
